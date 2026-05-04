@@ -1,0 +1,133 @@
+.about-section {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  min-height: 860px;
+  background: var(--kronos-purple);
+}
+
+.about-section__left {
+  position: relative;
+  min-height: 860px;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+.about-section__overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  padding: 260px 28px 40px;
+  background: linear-gradient(
+    90deg,
+    rgba(35, 20, 20, 0.24) 0%,
+    rgba(35, 20, 20, 0.16) 40%,
+    rgba(35, 20, 20, 0.08) 70%,
+    rgba(35, 20, 20, 0.04) 100%
+  );
+}
+
+.about-section__title {
+  margin: 0 0 8px;
+  font-size: 112px;
+  line-height: 0.9;
+  font-weight: 400;
+  color: var(--kronos-white);
+}
+
+.about-section__subtitle {
+  margin: 0;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 26px;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.about-section__right {
+  background: var(--kronos-purple);
+  padding: 48px 58px 48px 60px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.about-section__block {
+  margin-bottom: 44px;
+}
+
+.about-section__block:last-child {
+  margin-bottom: 0;
+}
+
+.about-section__heading {
+  margin: 0 0 18px;
+  font-size: 58px;
+  line-height: 1;
+  font-weight: 400;
+  color: var(--kronos-white);
+}
+
+.about-section__text {
+  margin: 0;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 28px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+@media (max-width: 1400px) {
+  .about-section {
+    grid-template-columns: 1fr;
+  }
+
+  .about-section__left,
+  .about-section__right {
+    min-height: auto;
+  }
+
+  .about-section__overlay {
+    position: relative;
+    min-height: 540px;
+    padding-top: 180px;
+  }
+
+  .about-section__title {
+    font-size: 86px;
+  }
+
+  .about-section__heading {
+    font-size: 46px;
+  }
+
+  .about-section__text {
+    font-size: 22px;
+  }
+}
+
+@media (max-width: 700px) {
+  .about-section__overlay {
+    padding: 120px 22px 30px;
+    min-height: 420px;
+  }
+
+  .about-section__right {
+    padding: 30px 22px 36px;
+  }
+
+  .about-section__title {
+    font-size: 64px;
+  }
+
+  .about-section__subtitle {
+    font-size: 18px;
+  }
+
+  .about-section__heading {
+    font-size: 38px;
+  }
+
+  .about-section__text {
+    font-size: 18px;
+  }
+}

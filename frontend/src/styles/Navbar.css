@@ -1,0 +1,57 @@
+.kronos-sidebar-container {
+  position: fixed; 
+  top: 0; 
+  right: 0; 
+  height: 100vh; 
+  width: 280px; 
+  background-color: #1a1a1a; 
+  box-shadow: -4px 0 15px rgba(0, 0, 0, 0.8); 
+  padding: 80px 30px 30px 30px; 
+  box-sizing: border-box; 
+  z-index: 999999;
+}
+
+.close-sidebar-btn {
+  position: absolute;
+  top: 25px; 
+  right: 30px;
+  background: transparent;
+  border: none;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  transition: color 0.3s ease;
+}
+
+.close-sidebar-btn:hover {
+  color: #D4AF37;
+}
+
+.kronos-sidebar-nav {
+  width: 100%;
+}
+
+.kronos-sidebar-links {
+  display: flex;
+  flex-direction: column; 
+  gap: 25px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.kronos-sidebar-link {
+  color: white;
+  text-decoration: none;
+  font-size: 16px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  transition: color 0.3s ease;
+  display: block; 
+  border-bottom: 1px solid #333; 
+  padding-bottom: 10px;
+}
+
+.kronos-sidebar-link:hover {
+  color: #D4AF37;
+}
