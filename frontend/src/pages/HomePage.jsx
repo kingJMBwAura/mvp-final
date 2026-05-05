@@ -58,7 +58,7 @@ export default function HomePage() {
       {/* PATEK OF THE DAY */}
       {patekOfTheDay && (
         <section className="potd">
-          <div className="potd__label">✦ Patek of the Day</div>
+          <div className="potd__label">✦ Watch of the Day</div>
 
           <div className="potd__card">
             <div className="potd__image-wrap">
