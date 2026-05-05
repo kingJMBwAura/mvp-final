@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import Navbar from './Navbar'; 
+import { useAuth } from '../services/auth';
 
 export default function KronosHeader({ overlay = false }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, logout } = useAuth();
   const [searchTerm, setSearchTerm] = useState(() => {
     const params = new URLSearchParams(location.search);
     return params.get("search") || "";
@@ -28,6 +30,11 @@ export default function KronosHeader({ overlay = false }) {
       : "/shopnow";
 
     navigate(nextPath);
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    navigate("/");
   };
 
   return (
@@ -54,6 +61,16 @@ export default function KronosHeader({ overlay = false }) {
         <Link to="/cart" type="button" className="kronos-icon-btn" aria-label="Cart">
           🛒
         </Link>
+
+        {user ? (
+          <button type="button" className="kronos-auth-btn" onClick={handleLogout}>
+            Log Out
+          </button>
+        ) : (
+          <Link to="/auth" className="kronos-auth-btn">
+            Log In
+          </Link>
+        )}
 
         <button type="button" className="kronos-icon-btn" aria-label="Menu" onClick={toggleMenu}>
           =

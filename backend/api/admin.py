@@ -9,9 +9,9 @@ class AccountAdmin(admin.ModelAdmin):
 
 
 class WatchAdmin(admin.ModelAdmin):
-    list_display = ['watch_id', 'brand', 'watch_name', 'sale_price', 'seller']
-    search_fields = ['brand', 'watch_name', 'listing_code']
-    list_filter = ['condition', 'brand', 'created_at']
+    list_display = ['watch_id', 'brand', 'watch_name', 'sale_price', 'seller', 'availability']
+    search_fields = ['brand', 'watch_name', 'reference_number']
+    list_filter = ['availability', 'condition', 'brand', 'created_at']
     readonly_fields = ['created_at', 'updated_at']
 
 

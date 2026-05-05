@@ -1,0 +1,113 @@
+.auth-page,
+.admin-page {
+  background:
+    linear-gradient(180deg, rgba(75, 70, 118, 0.96), rgba(30, 31, 48, 1) 72%),
+    var(--kronos-purple);
+}
+
+.auth-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 470px);
+  gap: 48px;
+  align-items: center;
+  width: min(1120px, 100%);
+  min-height: calc(100vh - 130px);
+  margin: 0 auto;
+}
+
+.auth-copy h1 {
+  max-width: 650px;
+  margin: 0;
+  font-size: clamp(44px, 6vw, 82px);
+  line-height: 0.96;
+}
+
+.auth-copy p:not(.sell-eyebrow) {
+  max-width: 620px;
+  margin: 20px 0 0;
+  color: rgba(247, 245, 242, 0.76);
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 17px;
+  line-height: 1.6;
+}
+
+.auth-panel {
+  display: grid;
+  gap: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  padding: 24px;
+  box-shadow: 0 24px 70px rgba(20, 18, 42, 0.22);
+}
+
+.auth-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 6px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.auth-tab {
+  min-height: 42px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(247, 245, 242, 0.74);
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.auth-tab--active {
+  background: var(--kronos-gold);
+  color: #24213c;
+}
+
+.auth-form {
+  display: grid;
+  gap: 16px;
+}
+
+.auth-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.auth-actions {
+  display: grid;
+  gap: 14px;
+  margin-top: 4px;
+}
+
+.auth-actions p,
+.auth-link {
+  margin: 0;
+  color: rgba(247, 245, 242, 0.7);
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.auth-link {
+  color: var(--kronos-gold);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+@media (max-width: 860px) {
+  .auth-layout {
+    grid-template-columns: 1fr;
+    gap: 28px;
+    align-items: start;
+    padding-top: 28px;
+  }
+
+  .auth-grid {
+    grid-template-columns: 1fr;
+  }
+}

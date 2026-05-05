@@ -9,9 +9,16 @@ urlpatterns = [
     
     path('hello/', views.hello_api, name="hello_api"),        
     path('landing/', views.landing_page, name="landing_page"),
+    path('auth/signup/', views.signup, name='signup'),
+    path('auth/login/', views.login_user, name='login_user'),
+    path('auth/logout/', views.logout_user, name='logout_user'),
+    path('auth/me/', views.current_user, name='current_user'),
     
     path('watches/', views.all_watches, name="all_watches"), 
     path('watches/create/', views.create_watch_listing, name='create_watch_listing'),
+    path('watches/pending/', views.pending_watch_listings, name='pending_watch_listings'),
+    path('watches/<int:watch_id>/approve/', views.approve_watch_listing, name='approve_watch_listing'),
+    path('watches/<int:watch_id>/reject/', views.reject_watch_listing, name='reject_watch_listing'),
     path('watches/<int:watch_id>/', views.product_detail, name='product_detail'),
     
     path('cart/', views.get_user_cart, name='get_cart'),

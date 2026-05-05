@@ -7,12 +7,16 @@ import OrderConfirmationPage from "./pages/OrderConfirmationPage";
 import ShopNow from "./pages/ShopNow";
 import About from "./pages/About";
 import SellPage from './pages/SellPage'; 
+import AuthPage from "./pages/AuthPage";
+import AdminListingsPage from "./pages/AdminListingsPage";
 
 export default function App() {
   return (
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/sell" element={<SellPage />} />
+        <Route path="/auth" element={<AuthPage />} />
+        <Route path="/admin/listings" element={<AdminListingsPage />} />
         <Route path="/watches/:id" element={<WatchDetailPage />} />
         <Route path="/cart" element={<CartPage />} />
         <Route path="/checkout" element={<CheckoutPage />} />

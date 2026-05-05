@@ -1,6 +1,9 @@
 from decimal import Decimal
 
+from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.models import User
 from django.shortcuts import render
+from django.views.decorators.csrf import csrf_exempt
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
@@ -12,6 +15,7 @@ from .models import Watch, Account, Order, Cart, PromoCode, PromoCodeUsage
 
 CART_STORAGE = []
 AVAILABLE_STATUS = "Available"
+PENDING_STATUS = "Pending Review"
 
 # --- UTILITY ---
 
@@ -74,6 +78,33 @@ def record_promo_usage(promo, account):
     promo.save(update_fields=['uses_count', 'updated_at'])
 
 
+def decrement_watch_inventory(watch_ids):
+    unique_watch_ids = list(dict.fromkeys(watch_ids))
+    watches = list(Watch.objects.select_for_update().filter(watch_id__in=unique_watch_ids))
+
+    if len(watches) != len(unique_watch_ids):
+        return None, 'One or more watches could not be found.'
+
+    unavailable = [
+        watch for watch in watches
+        if watch.availability != AVAILABLE_STATUS or watch.stock_quantity <= 0
+    ]
+    if unavailable:
+        names = ', '.join(f'{watch.brand} {watch.watch_name}' for watch in unavailable)
+        return None, f'These watches are no longer available: {names}'
+
+    for watch in watches:
+        watch.stock_quantity -= 1
+        if watch.stock_quantity <= 0:
+            watch.stock_quantity = 0
+            watch.availability = 'Sold'
+        else:
+            watch.availability = AVAILABLE_STATUS
+        watch.save(update_fields=['stock_quantity', 'availability', 'updated_at'])
+
+    return watches, None
+
+
 def parse_money(value, default='0.00'):
     try:
         return Decimal(str(value if value is not None else default))
@@ -117,6 +148,14 @@ def get_watch_image_url(watch, request=None):
     return None
 
 
+def get_account_display_name(account):
+    if not account:
+        return None
+
+    full_name = f"{account.first_name} {account.last_name}".strip()
+    return full_name or account.user_name
+
+
 def watch_to_dict(watch, request=None):
     market = getattr(watch, 'market_data', None)
     return {
@@ -127,7 +166,7 @@ def watch_to_dict(watch, request=None):
         "condition": watch.condition,
         "sale_price": str(watch.sale_price),
         "currency": watch.currency,
-        "seller_name": watch.seller.user_name if watch.seller else None,
+        "seller_name": get_account_display_name(watch.seller),
         "description": watch.description,
         "image_url": get_watch_image_url(watch, request),
         "availability": watch.availability,
@@ -149,9 +188,132 @@ def watch_to_dict(watch, request=None):
         "market_external_image": normalize_external_image_url(market.external_image) if market else None,
     }
 
+
+def account_to_dict(account):
+    user = account.user
+    return {
+        "id": account.pk,
+        "username": user.username,
+        "email": account.email,
+        "first_name": account.first_name,
+        "last_name": account.last_name,
+        "display_name": account.user_name,
+        "is_admin": user.is_superuser,
+    }
+
+
+def get_or_create_account_for_user(user):
+    account = Account.objects.filter(user=user).first()
+    if account:
+        return account
+
+    first_name = user.first_name or user.username
+    last_name = user.last_name or ""
+    return Account.objects.create(
+        user=user,
+        email=user.email or f"{user.username}@kronos.local",
+        first_name=first_name,
+        last_name=last_name,
+        user_name=user.username,
+    )
+
+
+def require_superuser(request):
+    if not request.user.is_authenticated:
+        return Response({'error': 'Login is required.'}, status=status.HTTP_401_UNAUTHORIZED)
+    if not request.user.is_superuser:
+        return Response({'error': 'Admin access is required.'}, status=status.HTTP_403_FORBIDDEN)
+    return None
+
 @api_view(['GET'])
 def hello_api(request):
     return Response({"message": "Hello from Django backend"})
+
+
+@csrf_exempt
+@api_view(['POST'])
+def signup(request):
+    data = request.data
+    username = str(data.get('username', '')).strip()
+    email = str(data.get('email', '')).strip().lower()
+    password = str(data.get('password', ''))
+    first_name = str(data.get('first_name', '')).strip()
+    last_name = str(data.get('last_name', '')).strip()
+
+    missing_fields = [
+        field for field, value in {
+            'username': username,
+            'email': email,
+            'password': password,
+            'first_name': first_name,
+            'last_name': last_name,
+        }.items()
+        if not value
+    ]
+    if missing_fields:
+        return Response({
+            'error': 'Missing required fields.',
+            'fields': missing_fields,
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    if User.objects.filter(username__iexact=username).exists():
+        return Response({'error': 'Username is already taken.'}, status=status.HTTP_400_BAD_REQUEST)
+    if User.objects.filter(email__iexact=email).exists() or Account.objects.filter(email__iexact=email).exists():
+        return Response({'error': 'Email is already registered.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    user = User.objects.create_user(
+        username=username,
+        email=email,
+        password=password,
+        first_name=first_name,
+        last_name=last_name,
+    )
+    account = Account.objects.create(
+        user=user,
+        email=email,
+        first_name=first_name,
+        last_name=last_name,
+        user_name=username,
+    )
+    login(request, user)
+
+    return Response({
+        'status': 'success',
+        'user': account_to_dict(account),
+    }, status=status.HTTP_201_CREATED)
+
+
+@csrf_exempt
+@api_view(['POST'])
+def login_user(request):
+    username = str(request.data.get('username', '')).strip()
+    password = str(request.data.get('password', ''))
+
+    user = authenticate(request, username=username, password=password)
+    if user is None:
+        return Response({'error': 'Invalid username or password.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    login(request, user)
+    account = get_or_create_account_for_user(user)
+    return Response({
+        'status': 'success',
+        'user': account_to_dict(account),
+    })
+
+
+@csrf_exempt
+@api_view(['POST'])
+def logout_user(request):
+    logout(request)
+    return Response({'status': 'success'})
+
+
+@api_view(['GET'])
+def current_user(request):
+    if not request.user.is_authenticated:
+        return Response({'user': None})
+    account = get_or_create_account_for_user(request.user)
+    return Response({'user': account_to_dict(account)})
 
 class WatchPagination(PageNumberPagination):
     page_size = 12
@@ -206,6 +368,7 @@ def product_detail(request, watch_id):
         return Response({'detail': 'Watch not found.'}, status=status.HTTP_404_NOT_FOUND)
 
 
+@csrf_exempt
 @api_view(['POST'])
 def create_watch_listing(request):
     data = request.data
@@ -221,12 +384,15 @@ def create_watch_listing(request):
             'fields': missing_fields,
         }, status=status.HTTP_400_BAD_REQUEST)
 
-    seller_id = data.get('seller_id') or data.get('seller') or data.get('user_id')
-    seller = None
-    if seller_id:
-        seller = Account.objects.filter(pk=seller_id).first()
-    if seller is None:
-        seller = Account.objects.order_by('pk').first()
+    if request.user.is_authenticated:
+        seller = get_or_create_account_for_user(request.user)
+    else:
+        seller_id = data.get('seller_id') or data.get('seller') or data.get('user_id')
+        seller = None
+        if seller_id:
+            seller = Account.objects.filter(pk=seller_id).first()
+        if seller is None:
+            seller = Account.objects.order_by('pk').first()
     if seller is None:
         return Response({
             'error': 'A seller account is required before listing a watch.',
@@ -251,7 +417,7 @@ def create_watch_listing(request):
         year_of_production=parse_optional_int(data.get('year_of_production')),
         gender=str(data.get('gender', '')).strip() or None,
         location=str(data.get('location', '')).strip(),
-        availability=AVAILABLE_STATUS,
+        availability=PENDING_STATUS,
         stock_quantity=parse_optional_int(data.get('stock_quantity')) or 1,
         currency=str(data.get('currency', 'PHP')).strip() or 'PHP',
         negotiable=parse_bool(data.get('negotiable', False)),
@@ -264,6 +430,55 @@ def create_watch_listing(request):
         'status': 'success',
         'watch': watch_to_dict(watch, request),
     }, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET'])
+def pending_watch_listings(request):
+    permission_error = require_superuser(request)
+    if permission_error:
+        return permission_error
+
+    watches = Watch.objects.filter(availability=PENDING_STATUS).select_related('seller').order_by('-created_at')
+    return Response([watch_to_dict(w, request) for w in watches])
+
+
+@csrf_exempt
+@api_view(['POST'])
+def approve_watch_listing(request, watch_id):
+    permission_error = require_superuser(request)
+    if permission_error:
+        return permission_error
+
+    try:
+        watch = Watch.objects.select_related('seller').get(pk=watch_id, availability=PENDING_STATUS)
+    except Watch.DoesNotExist:
+        return Response({'error': 'Pending listing not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    watch.availability = AVAILABLE_STATUS
+    if watch.stock_quantity <= 0:
+        watch.stock_quantity = 1
+    watch.save(update_fields=['availability', 'stock_quantity', 'updated_at'])
+
+    return Response({
+        'status': 'success',
+        'watch': watch_to_dict(watch, request),
+    })
+
+
+@csrf_exempt
+@api_view(['DELETE'])
+def reject_watch_listing(request, watch_id):
+    permission_error = require_superuser(request)
+    if permission_error:
+        return permission_error
+
+    try:
+        watch = Watch.objects.get(pk=watch_id, availability=PENDING_STATUS)
+    except Watch.DoesNotExist:
+        return Response({'error': 'Pending listing not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    watch.delete()
+    return Response({'status': 'success', 'message': 'Listing rejected and deleted.'})
 
 # --- PROMO CODE VIEWS ---
 
@@ -363,6 +578,7 @@ def checkout(request, user_id):
             return Response({'detail': 'Cart is empty'}, status=status.HTTP_400_BAD_REQUEST)
 
         watches = Watch.objects.filter(carts__buyer=user).distinct()
+        watch_ids = list(watches.values_list('watch_id', flat=True))
         subtotal = sum(w.sale_price for w in watches)
         discount = Decimal('0.00')
         promo = None
@@ -376,6 +592,10 @@ def checkout(request, user_id):
         total_price = max(Decimal(str(subtotal)) - discount, Decimal('0.00'))
 
         with transaction.atomic():
+            purchased_watches, inventory_error = decrement_watch_inventory(watch_ids)
+            if inventory_error:
+                return Response({'detail': inventory_error}, status=status.HTTP_400_BAD_REQUEST)
+
             order = Order.objects.create(
                 buyer=user,
                 full_name=request.data.get('full_name', ''),
@@ -390,8 +610,7 @@ def checkout(request, user_id):
                 shipping_region=request.data.get('shipping_region', ''),
                 shipping_zip_code=request.data.get('shipping_zip_code', ''),
             )
-            order.watches.set(watches)
-            watches.update(availability='Sold')
+            order.watches.set(purchased_watches)
             if promo:
                 record_promo_usage(promo, user)
             cart.delete()
@@ -447,6 +666,12 @@ def create_order(request):
             total_price = max(subtotal + shipping_cost - discount, Decimal('0.00'))
 
         with transaction.atomic():
+            purchased_watches = []
+            if watch_ids:
+                purchased_watches, inventory_error = decrement_watch_inventory(watch_ids)
+                if inventory_error:
+                    return Response({"error": inventory_error}, status=status.HTTP_400_BAD_REQUEST)
+
             order = Order.objects.create(
                 buyer=buyer_account,
                 full_name=data.get('full_name'),
@@ -463,8 +688,7 @@ def create_order(request):
             )
 
             if watch_ids:
-                order.watches.set(valid_watches)
-                valid_watches.update(availability='Sold')
+                order.watches.set(purchased_watches)
             if promo:
                 record_promo_usage(promo, buyer_account)
 

@@ -1,4 +1,15 @@
-const API_BASE = "http://127.0.0.1:8000/api/";
+const API_HOST = window.location.hostname || "127.0.0.1";
+const API_BASE = `http://${API_HOST}:8000/api/`;
+
+async function parseJsonResponse(response) {
+  const data = await response.json();
+  if (!response.ok) {
+    const error = new Error(data.error || data.detail || "Request failed");
+    error.responseData = data;
+    throw error;
+  }
+  return data;
+}
 
 export async function getHello() {
   const response = await fetch(`${API_BASE}hello/`);
@@ -25,6 +36,7 @@ export async function createWatchListing(payload) {
   const isFormData = payload instanceof FormData;
   const response = await fetch(`${API_BASE}watches/create/`, {
     method: "POST",
+    credentials: "include",
     headers: isFormData ? undefined : { "Content-Type": "application/json" },
     body: isFormData ? payload : JSON.stringify(payload),
   });
@@ -36,6 +48,64 @@ export async function createWatchListing(payload) {
     throw error;
   }
   return data;
+}
+
+export async function signup(payload) {
+  const response = await fetch(`${API_BASE}auth/signup/`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return parseJsonResponse(response);
+}
+
+export async function login(payload) {
+  const response = await fetch(`${API_BASE}auth/login/`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return parseJsonResponse(response);
+}
+
+export async function logout() {
+  const response = await fetch(`${API_BASE}auth/logout/`, {
+    method: "POST",
+    credentials: "include",
+  });
+  return parseJsonResponse(response);
+}
+
+export async function getCurrentUser() {
+  const response = await fetch(`${API_BASE}auth/me/`, {
+    credentials: "include",
+  });
+  return parseJsonResponse(response);
+}
+
+export async function getPendingListings() {
+  const response = await fetch(`${API_BASE}watches/pending/`, {
+    credentials: "include",
+  });
+  return parseJsonResponse(response);
+}
+
+export async function approveListing(id) {
+  const response = await fetch(`${API_BASE}watches/${id}/approve/`, {
+    method: "POST",
+    credentials: "include",
+  });
+  return parseJsonResponse(response);
+}
+
+export async function rejectListing(id) {
+  const response = await fetch(`${API_BASE}watches/${id}/reject/`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  return parseJsonResponse(response);
 }
 
 export async function getCart() {

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import KronosHeader from "../components/KronosHeader";
 import { createWatchListing } from "../services/api";
+import { useAuth } from "../services/auth";
 import heroWatch from "../assets/images/hero-watch.jpg";
 import "../styles/SellPage.css";
 
@@ -8,6 +10,7 @@ const conditionOptions = ["New", "Excellent", "Very Good", "Good", "Fair"];
 const requiredFields = ["brand", "watch_name", "condition", "sale_price", "location"];
 
 export default function SellPage() {
+  const { user, loading } = useAuth();
   const [formData, setFormData] = useState({
     brand: "",
     watch_name: "",
@@ -136,19 +139,38 @@ export default function SellPage() {
             <p className="sell-eyebrow">Submitted for review</p>
             <h1 className="section-heading-serif">Your listing is in good hands.</h1>
             <p>
-              The Kronos team will review the details and prepare your watch for the marketplace.
+              The Kronos team will review the details. Once an admin accepts it, buyers will see it in the store.
             </p>
-            {createdWatch?.id && (
-              <a className="sell-secondary-link" href={`/watches/${createdWatch.id}`}>
-                View Listing
-              </a>
-            )}
+            {createdWatch?.id && <p>Review ID: {createdWatch.id}</p>}
             <button className="sell-primary-btn" onClick={() => {
               setCreatedWatch(null);
               setSubmitted(false);
             }}>
               List Another Watch
             </button>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (!loading && !user) {
+    return (
+      <div className="page-shell sell-page">
+        <KronosHeader />
+        <main className="sell-success">
+          <div className="sell-success__panel">
+            <p className="sell-eyebrow">Seller Account Required</p>
+            <h1 className="section-heading-serif">Log in before listing.</h1>
+            <p>
+              Listings are attached to your Kronos account and sent to admins for approval before they appear in the shop.
+            </p>
+            <Link className="sell-secondary-link" to="/auth?mode=signup">
+              Sign Up
+            </Link>
+            <Link className="sell-primary-btn sell-login-link" to="/auth">
+              Log In
+            </Link>
           </div>
         </main>
       </div>
@@ -305,7 +327,7 @@ export default function SellPage() {
             </fieldset>
 
             <div className="sell-form__actions">
-              <p>{submitError || "Listings go live in the shop after submission."}</p>
+              <p>{submitError || "Listings go live only after an admin accepts them."}</p>
               <button type="submit" className="sell-primary-btn" disabled={submitting}>
                 {submitting ? "Submitting..." : "Submit Listing"}
               </button>
