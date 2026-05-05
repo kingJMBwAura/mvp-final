@@ -4,6 +4,32 @@ import KronosHeader from "../components/KronosHeader";
 import { getCart, removeFromCart, applyPromoCode } from "../services/api";
 import "../styles/CartPage.css";
 
+function formatCurrency(value) {
+  return Number(value).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+function computeTotals(items, shippingValue = "100.00", discountValue = 0) {
+  const subtotalValue = items.reduce((sum, item) => {
+    const priceString = item.watch?.sale_price?.toString() || "0";
+    const numericPrice = parseFloat(priceString.replace(/[^\d.]+/g, "")) || 0;
+    const quantity = item.quantity || 1;
+    return sum + numericPrice * quantity;
+  }, 0);
+
+  const shippingNumeric = parseFloat(shippingValue.toString().replace(/[^\d.]+/g, "")) || 0;
+  const totalValue = subtotalValue - Number(discountValue || 0) + shippingNumeric;
+
+  return {
+    subtotal: formatCurrency(subtotalValue),
+    total: formatCurrency(totalValue),
+    shipping: formatCurrency(shippingNumeric),
+    discount: formatCurrency(Number(discountValue || 0)),
+  };
+}
+
 export default function CartPage() {
   const [cart, setCart] = useState(null);
   const [promoCode, setPromoCode] = useState("");
@@ -14,39 +40,27 @@ export default function CartPage() {
     async function loadCart() {
       try {
         const data = await getCart();
-        setCart(data);
+        const savedPromo = JSON.parse(localStorage.getItem("kronosPromoCode") || "null");
+        if (savedPromo?.discount_amount) {
+          const totals = computeTotals(data.items || [], data.shipping || "100.00", savedPromo.discount_amount);
+          setCart({
+            ...data,
+            ...totals,
+            discount: savedPromo.discount_amount,
+            promo_code: savedPromo.code,
+          });
+          setPromoCode(savedPromo.code || "");
+          setPromoStatus("success");
+          setPromoMessage(`Promo code applied: ${savedPromo.code}`);
+        } else {
+          setCart(data);
+        }
       } catch (error) {
         console.error("Failed to load cart:", error);
       }
     }
     loadCart();
   }, []);
-
-  function formatCurrency(value) {
-    return Number(value).toLocaleString('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-  }
-
-  function computeTotals(items, shippingValue = "100.00", discountValue = 0) {
-    const subtotalValue = items.reduce((sum, item) => {
-      const priceString = item.watch?.sale_price?.toString() || "0";
-      const numericPrice = parseFloat(priceString.replace(/[^\d.]+/g, "")) || 0;
-      const quantity = item.quantity || 1;
-      return sum + numericPrice * quantity;
-    }, 0);
-
-    const shippingNumeric = parseFloat(shippingValue.toString().replace(/[^\d.]+/g, "")) || 0;
-    const totalValue = subtotalValue - Number(discountValue || 0) + shippingNumeric;
-
-    return {
-      subtotal: formatCurrency(subtotalValue),
-      total: formatCurrency(totalValue),
-      shipping: formatCurrency(shippingNumeric),
-      discount: formatCurrency(Number(discountValue || 0)),
-    };
-  }
 
   async function handleApplyPromo(event) {
     event.preventDefault();
@@ -60,14 +74,22 @@ export default function CartPage() {
     }
 
     try {
-      const data = await applyPromoCode(promoCode);
-      const discountValue = parseFloat(data.discount_value) || 0;
+      const subtotalValue = cart?.subtotal?.toString().replace(/[^\d.]+/g, "") || "0";
+      const data = await applyPromoCode(promoCode, {
+        account_id: 1,
+        subtotal: subtotalValue,
+      });
+      const discountValue = parseFloat(data.discount_amount) || 0;
       const discountLabel = data.discount_type === "percentage"
-        ? `${discountValue}% off`
+        ? `${parseFloat(data.discount_value) || 0}% off`
         : `₱${formatCurrency(discountValue)} off`;
 
       setPromoStatus("success");
       setPromoMessage(`Promo code applied: ${data.code} — ${discountLabel}`);
+      localStorage.setItem("kronosPromoCode", JSON.stringify({
+        code: data.code,
+        discount_amount: data.discount_amount,
+      }));
 
       setCart((prevCart) => {
         const nextCart = { ...prevCart, discount: discountValue };
@@ -83,10 +105,13 @@ export default function CartPage() {
   async function handleRemove(cartItemId) {
     try {
       await removeFromCart(cartItemId);
+      localStorage.removeItem("kronosPromoCode");
+      setPromoMessage("");
+      setPromoStatus("");
       setCart((prevCart) => {
         const nextItems = prevCart.items.filter((item) => item.id !== cartItemId);
-        const totals = computeTotals(nextItems, prevCart.shipping || "100.00", prevCart.discount || 0);
-        return { ...prevCart, items: nextItems, ...totals };
+        const totals = computeTotals(nextItems, prevCart.shipping || "100.00", 0);
+        return { ...prevCart, items: nextItems, discount: 0, promo_code: null, ...totals };
       });
     } catch (error) {
       console.error("Error removing item:", error);

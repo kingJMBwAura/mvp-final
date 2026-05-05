@@ -1,9 +1,12 @@
+from decimal import Decimal
+
 from django.shortcuts import render
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
 from rest_framework.pagination import PageNumberPagination
 from django.utils import timezone
+from django.db import transaction
 from django.db.models import Q
 from .models import Watch, Account, Order, Cart, PromoCode, PromoCodeUsage
 
@@ -11,6 +14,71 @@ CART_STORAGE = []
 AVAILABLE_STATUS = "Available"
 
 # --- UTILITY ---
+
+def calculate_promo_discount(promo, subtotal):
+    subtotal = Decimal(str(subtotal))
+
+    if promo.discount_type == 'percentage':
+        discount = subtotal * (promo.discount_value / Decimal('100'))
+    else:
+        discount = promo.discount_value
+
+    return min(discount.quantize(Decimal('0.01')), subtotal)
+
+
+def validate_promo_code(code, account=None, subtotal=None):
+    if not code:
+        return None, None, 'Promo code is required.'
+
+    try:
+        promo = PromoCode.objects.get(code=code.strip().upper(), is_active=True)
+    except PromoCode.DoesNotExist:
+        return None, None, 'Invalid or inactive promo code.'
+
+    if promo.expiry_date and promo.expiry_date <= timezone.now():
+        return None, None, 'Promo code has expired.'
+
+    if promo.usage_type == 'universal':
+        if promo.max_uses is not None and promo.uses_count >= promo.max_uses:
+            return None, None, 'Promo code has reached its usage limit.'
+
+    if promo.usage_type in ('per_account', 'restricted') and account is None:
+        return None, None, 'An account is required to use this promo code.'
+
+    usage = None
+    if account is not None:
+        usage = PromoCodeUsage.objects.filter(promo_code=promo, account=account).first()
+
+    if promo.usage_type == 'per_account':
+        max_uses = promo.max_uses_per_account or 1
+        if usage and usage.uses_count >= max_uses:
+            return None, None, 'Promo code usage limit reached for this account.'
+
+    if promo.usage_type == 'restricted':
+        if not promo.allowed_accounts.filter(pk=account.pk).exists():
+            return None, None, 'Promo code is not available for this account.'
+        max_uses = promo.max_uses_per_account or 1
+        if usage and usage.uses_count >= max_uses:
+            return None, None, 'Promo code usage limit reached for this account.'
+
+    discount = calculate_promo_discount(promo, subtotal or Decimal('0.00'))
+    return promo, discount, None
+
+
+def record_promo_usage(promo, account):
+    usage, _ = PromoCodeUsage.objects.get_or_create(promo_code=promo, account=account)
+    usage.uses_count += 1
+    usage.save(update_fields=['uses_count', 'updated_at'])
+
+    promo.uses_count += 1
+    promo.save(update_fields=['uses_count', 'updated_at'])
+
+
+def parse_money(value, default='0.00'):
+    try:
+        return Decimal(str(value if value is not None else default))
+    except Exception:
+        return Decimal(default)
 
 def watch_to_dict(watch, request=None):
     market = getattr(watch, 'market_data', None)
@@ -105,24 +173,37 @@ def product_detail(request, watch_id):
 @api_view(['POST'])
 def apply_promo_code(request):
     promo_code = request.data.get('promo_code', '').strip().upper()
-    if not promo_code:
-        return Response({'error': 'Promo code is required.'}, status=status.HTTP_400_BAD_REQUEST)
+    account = None
+    account_id = request.data.get('account_id') or request.data.get('user_id')
+    if account_id:
+        try:
+            account = Account.objects.get(pk=account_id)
+        except Account.DoesNotExist:
+            return Response({'error': 'Account not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-    try:
-        promo = PromoCode.objects.get(code=promo_code, is_active=True)
-    except PromoCode.DoesNotExist:
-        return Response({'error': 'Invalid or inactive promo code.'}, status=status.HTTP_400_BAD_REQUEST)
+    subtotal = request.data.get('subtotal')
+    if subtotal is None and account is not None:
+        watches = Watch.objects.filter(carts__buyer=account).distinct()
+        subtotal = sum(w.sale_price for w in watches)
+    elif subtotal is None:
+        subtotal = Decimal('0.00')
+    else:
+        subtotal = parse_money(subtotal)
 
-    if promo.expiry_date and promo.expiry_date < timezone.now():
-        return Response({'error': 'Promo code has expired.'}, status=status.HTTP_400_BAD_REQUEST)
+    promo, discount, error = validate_promo_code(promo_code, account=account, subtotal=subtotal)
+    if error:
+        return Response({'error': error}, status=status.HTTP_400_BAD_REQUEST)
 
-    if promo.max_uses is not None and promo.uses_count >= promo.max_uses:
-        return Response({'error': 'Promo code has reached its usage limit.'}, status=status.HTTP_400_BAD_REQUEST)
+    subtotal = parse_money(subtotal)
+    total = max(subtotal - discount, Decimal('0.00'))
 
     return Response({
         'code': promo.code,
         'discount_type': promo.discount_type,
         'discount_value': str(promo.discount_value),
+        'discount_amount': str(discount),
+        'subtotal': str(subtotal.quantize(Decimal('0.01'))),
+        'total_after_discount': str(total.quantize(Decimal('0.01'))),
     })
 
 # --- CART VIEWS ---
@@ -184,51 +265,47 @@ def checkout(request, user_id):
         if not cart.exists():
             return Response({'detail': 'Cart is empty'}, status=status.HTTP_400_BAD_REQUEST)
 
-        watches = Watch.objects.filter(carts__buyer=user)
+        watches = Watch.objects.filter(carts__buyer=user).distinct()
         subtotal = sum(w.sale_price for w in watches)
-        discount = 0.00
+        discount = Decimal('0.00')
+        promo = None
 
         promo_code_str = request.data.get('promo_code')
         if promo_code_str:
-            try:
-                promo = PromoCode.objects.get(code=promo_code_str.strip().upper(), is_active=True)
-                usage, _ = PromoCodeUsage.objects.get_or_create(promo_code=promo, account=user)
-                if usage.uses_count == 0:
-                    discount = float(promo.discount_value)
-                    usage.uses_count += 1
-                    usage.save()
-                    promo.uses_count += 1
-                    promo.save()
-                else:
-                    return Response({'detail': 'Promo code already used'}, status=400)
-            except PromoCode.DoesNotExist:
-                return Response({'detail': 'Invalid promo code'}, status=400)
+            promo, discount, error = validate_promo_code(promo_code_str, account=user, subtotal=subtotal)
+            if error:
+                return Response({'detail': error}, status=status.HTTP_400_BAD_REQUEST)
 
-        total_price = float(subtotal) - discount
+        total_price = max(Decimal(str(subtotal)) - discount, Decimal('0.00'))
 
-        order = Order.objects.create(
-            buyer=user,
-            full_name=request.data.get('full_name', ''),
-            payment_method=request.data.get('payment_method', 'Credit Card'),
-            delivery_method=request.data.get('delivery_method', 'Standard'),
-            total_price=total_price,
-            shipping_cost=request.data.get('shipping_cost', 0.00),
-            payment_status='completed',
-            shipping_address_line_1=request.data.get('shipping_address_line_1', ''),
-            shipping_address_line_2=request.data.get('shipping_address_line_2', ''),
-            shipping_city=request.data.get('shipping_city', ''),
-            shipping_region=request.data.get('shipping_region', ''),
-            shipping_zip_code=request.data.get('shipping_zip_code', ''),
-        )
-        order.watches.set(watches)
-        watches.update(availability='Sold')
-        cart.delete()
+        with transaction.atomic():
+            order = Order.objects.create(
+                buyer=user,
+                full_name=request.data.get('full_name', ''),
+                payment_method=request.data.get('payment_method', 'Credit Card'),
+                delivery_method=request.data.get('delivery_method', 'Standard'),
+                total_price=total_price,
+                shipping_cost=request.data.get('shipping_cost', 0.00),
+                payment_status='completed',
+                shipping_address_line_1=request.data.get('shipping_address_line_1', ''),
+                shipping_address_line_2=request.data.get('shipping_address_line_2', ''),
+                shipping_city=request.data.get('shipping_city', ''),
+                shipping_region=request.data.get('shipping_region', ''),
+                shipping_zip_code=request.data.get('shipping_zip_code', ''),
+            )
+            order.watches.set(watches)
+            watches.update(availability='Sold')
+            if promo:
+                record_promo_usage(promo, user)
+            cart.delete()
 
         return Response({
             'status': 'success',
             'order_id': order.order_id,
-            'final_total': total_price,
-            'discount_applied': discount
+            'subtotal': str(Decimal(str(subtotal)).quantize(Decimal('0.01'))),
+            'final_total': str(total_price.quantize(Decimal('0.01'))),
+            'discount_applied': str(discount),
+            'promo_code': promo.code if promo else None,
         }, status=status.HTTP_201_CREATED)
 
     except Account.DoesNotExist:
@@ -257,33 +334,51 @@ def create_order(request):
         except Account.DoesNotExist:
             return Response({"error": f"Account with ID {buyer_id} does not exist."}, status=400)
 
-        order = Order.objects.create(
-            buyer=buyer_account,
-            full_name=data.get('full_name'),
-            payment_method=data.get('payment_method'),
-            delivery_method=data.get('delivery_method'),
-            total_price=data.get('total_price', 0.00),
-            shipping_cost=data.get('shipping_cost', 100.00),
-            payment_status=data.get('payment_status', 'pending'),
-            shipping_address_line_1=data.get('shipping_address_line_1'),
-            shipping_address_line_2=data.get('shipping_address_line_2', ''),
-            shipping_city=data.get('shipping_city'),
-            shipping_region=data.get('shipping_region'),
-            shipping_zip_code=data.get('shipping_zip_code')
-        )
-
         watch_ids = [wid for wid in (data.get('watches', []) or []) if wid is not None]
-        if watch_ids:
-            valid_watches = Watch.objects.filter(watch_id__in=watch_ids)
-            order.watches.set(valid_watches)
-            valid_watches.update(availability='Sold')
+        valid_watches = Watch.objects.filter(watch_id__in=watch_ids) if watch_ids else Watch.objects.none()
+        subtotal = sum(w.sale_price for w in valid_watches)
+        shipping_cost = parse_money(data.get('shipping_cost'), default='100.00')
+        total_price = parse_money(data.get('total_price'), default='0.00')
+        discount = Decimal('0.00')
+        promo = None
+
+        promo_code_str = data.get('promo_code')
+        if promo_code_str:
+            promo, discount, error = validate_promo_code(promo_code_str, account=buyer_account, subtotal=subtotal)
+            if error:
+                return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
+            total_price = max(subtotal + shipping_cost - discount, Decimal('0.00'))
+
+        with transaction.atomic():
+            order = Order.objects.create(
+                buyer=buyer_account,
+                full_name=data.get('full_name'),
+                payment_method=data.get('payment_method'),
+                delivery_method=data.get('delivery_method'),
+                total_price=total_price,
+                shipping_cost=shipping_cost,
+                payment_status=data.get('payment_status', 'pending'),
+                shipping_address_line_1=data.get('shipping_address_line_1'),
+                shipping_address_line_2=data.get('shipping_address_line_2', ''),
+                shipping_city=data.get('shipping_city'),
+                shipping_region=data.get('shipping_region'),
+                shipping_zip_code=data.get('shipping_zip_code')
+            )
+
+            if watch_ids:
+                order.watches.set(valid_watches)
+                valid_watches.update(availability='Sold')
+            if promo:
+                record_promo_usage(promo, buyer_account)
 
         return Response({
             "order_id": order.pk,
             "full_name": order.full_name,
             "total_price": str(order.total_price),
             "payment_status": order.payment_status,
-            "delivery_method": order.delivery_method
+            "delivery_method": order.delivery_method,
+            "discount_applied": str(discount),
+            "promo_code": promo.code if promo else None,
         }, status=201)
 
     except Exception as e:

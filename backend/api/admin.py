@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Account, Watch, Cart, Order
+from .models import Account, Watch, Cart, Order, PromoCode, PromoCodeUsage
 
 
 class AccountAdmin(admin.ModelAdmin):
@@ -25,7 +25,23 @@ class OrderAdmin(admin.ModelAdmin):
     readonly_fields = ['created_at', 'updated_at']
 
 
+class PromoCodeAdmin(admin.ModelAdmin):
+    list_display = ['code', 'discount_type', 'discount_value', 'usage_type', 'uses_count', 'is_active', 'expiry_date']
+    search_fields = ['code']
+    list_filter = ['discount_type', 'usage_type', 'is_active']
+    filter_horizontal = ['allowed_accounts']
+    readonly_fields = ['uses_count', 'created_at', 'updated_at']
+
+
+class PromoCodeUsageAdmin(admin.ModelAdmin):
+    list_display = ['promo_code', 'account', 'uses_count', 'updated_at']
+    search_fields = ['promo_code__code', 'account__user_name']
+    readonly_fields = ['created_at', 'updated_at']
+
+
 admin.site.register(Account, AccountAdmin)
 admin.site.register(Watch, WatchAdmin)
 admin.site.register(Cart, CartAdmin)
 admin.site.register(Order, OrderAdmin)
+admin.site.register(PromoCode, PromoCodeAdmin)
+admin.site.register(PromoCodeUsage, PromoCodeUsageAdmin)

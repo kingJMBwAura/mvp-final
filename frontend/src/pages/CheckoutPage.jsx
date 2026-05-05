@@ -9,6 +9,7 @@ export default function CheckoutPage() {
   
   const [cart, setCart] = useState(null);
   const [errors, setErrors] = useState({});
+  const [appliedPromo, setAppliedPromo] = useState(null);
 
   const [formData, setFormData] = useState({
     first_name: "",
@@ -28,6 +29,7 @@ export default function CheckoutPage() {
       try {
         const data = await getCart();
         setCart(data);
+        setAppliedPromo(JSON.parse(localStorage.getItem("kronosPromoCode") || "null"));
       } catch (error) {
         console.error("Failed to load cart for checkout:", error);
       }
@@ -76,7 +78,8 @@ export default function CheckoutPage() {
     ? parseFloat(cart.subtotal.toString().replace(/[^\d.]/g, ""))
     : 0;
   const shippingCost = formData.delivery_method === "Express" ? 500.00 : 100.00;
-  const finalTotal = subtotalNumeric + shippingCost;
+  const discountAmount = parseFloat(appliedPromo?.discount_amount || 0) || 0;
+  const finalTotal = Math.max(subtotalNumeric + shippingCost - discountAmount, 0);
 
   async function handleSubmit() {
     if (!validateForm()) return;
@@ -94,6 +97,7 @@ export default function CheckoutPage() {
         shipping_cost: shippingCost,
         delivery_method: formData.delivery_method,
         payment_method: formData.payment_method,
+        promo_code: appliedPromo?.code || "",
         watches: cart.items
           .map((item) => item.watch?.watch_id ?? item.watch?.id)
           .filter((id) => id != null),
@@ -105,6 +109,7 @@ export default function CheckoutPage() {
       const finalOrderId = order.order_id || order.id;
 
       if (finalOrderId) {
+        localStorage.removeItem("kronosPromoCode");
         navigate(`/orders/${finalOrderId}`);
       } else {
         console.error("No ID returned from backend:", order);
@@ -310,6 +315,12 @@ export default function CheckoutPage() {
                 <span>Shipping</span>
                 <span>₱ {formatCurrency(shippingCost)}</span>
               </div>
+              {discountAmount > 0 && (
+                <div className="checkout-summary__line checkout-summary__line--discount">
+                  <span>Discount</span>
+                  <span>-₱ {formatCurrency(discountAmount)}</span>
+                </div>
+              )}
               <hr />
               <div className="checkout-summary__line checkout-summary__line--total">
                 <span>Total</span>

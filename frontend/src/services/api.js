@@ -27,11 +27,11 @@ export async function getCart() {
     return response.json();
   }
 
-export async function applyPromoCode(code) {
+export async function applyPromoCode(code, options = {}) {
     const response = await fetch(`${API_BASE}promo/apply/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ promo_code: code }),
+        body: JSON.stringify({ promo_code: code, ...options }),
     });
     const data = await response.json();
     if (!response.ok) {
