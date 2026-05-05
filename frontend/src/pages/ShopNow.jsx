@@ -7,8 +7,6 @@ import "../styles/ShopNow.css";
 export default function ShopNowSection() {
   const [watches, setWatches] = useState([]);
   const [addingId, setAddingId] = useState(null);
-  const [addedId, setAddedId] = useState(null);
-
   const [showSuccess, setShowSuccess] = useState(false);
   const [lastAddedWatch, setLastAddedWatch] = useState(null);
   const [searchParams] = useSearchParams();
@@ -72,7 +70,7 @@ return (
             const id = watch.id ?? watch.watch_id;
             const brand = watch.brand ?? "";
             const model = watch.model ?? watch.watch_name ?? "";
-            const image = watch.image_url || watch.image || null; 
+            const image = watch.image_url || watch.market_external_image || watch.image || null; 
 
             return (
               <div key={id} className="shop-now__card">

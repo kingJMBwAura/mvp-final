@@ -2,11 +2,12 @@ from decimal import Decimal
 from unittest.mock import Mock, patch
 
 from django.contrib.auth.models import User
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from .models import Account, Cart, PromoCode, PromoCodeUsage, Watch
+from .models import Account, Cart, PromoCode, PromoCodeUsage, Watch, WatchMarketData
 
 
 class PromoCodeApiTests(APITestCase):
@@ -113,6 +114,59 @@ class PromoCodeApiTests(APITestCase):
         self.assertEqual(response.data['discount_applied'], '50.00')
         usage = PromoCodeUsage.objects.get(promo_code=promo, account=self.account)
         self.assertEqual(usage.uses_count, 1)
+
+    def test_create_watch_listing_appears_in_shop_feed(self):
+        response = self.client.post('/api/watches/create/', {
+            'seller_id': self.seller.pk,
+            'brand': 'Rolex',
+            'watch_name': 'Datejust',
+            'reference_number': '126234',
+            'condition': 'Excellent',
+            'sale_price': '500000.00',
+            'currency': 'PHP',
+            'location': 'Manila, Philippines',
+            'stock_quantity': 1,
+            'negotiable': True,
+            'description': 'Full set with box and papers.',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        created_watch_id = response.data['watch']['id']
+
+        created_watch = Watch.objects.get(pk=created_watch_id)
+        WatchMarketData.objects.create(
+            watch=created_watch,
+            external_image='https://example.com/datejust.jpg',
+        )
+
+        shop_response = self.client.get('/api/watches/')
+        self.assertEqual(shop_response.status_code, status.HTTP_200_OK)
+        created_listing = next(
+            watch for watch in shop_response.data
+            if watch['id'] == created_watch_id
+        )
+        self.assertEqual(created_listing['availability'], 'Available')
+        self.assertEqual(created_listing['image_url'], 'https://example.com/datejust.jpg')
+
+    def test_create_watch_listing_accepts_image_upload(self):
+        upload = SimpleUploadedFile(
+            'listing.jpg',
+            b'fake image content',
+            content_type='image/jpeg',
+        )
+
+        response = self.client.post('/api/watches/create/', {
+            'seller_id': self.seller.pk,
+            'brand': 'Tudor',
+            'watch_name': 'Black Bay',
+            'condition': 'Very Good',
+            'sale_price': '180000.00',
+            'location': 'Makati, Philippines',
+            'image': upload,
+        }, format='multipart')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn('/media/watches/', response.data['watch']['image_url'])
 
     def test_expired_promo_is_rejected(self):
         PromoCode.objects.create(

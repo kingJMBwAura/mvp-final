@@ -11,6 +11,7 @@ urlpatterns = [
     path('landing/', views.landing_page, name="landing_page"),
     
     path('watches/', views.all_watches, name="all_watches"), 
+    path('watches/create/', views.create_watch_listing, name='create_watch_listing'),
     path('watches/<int:watch_id>/', views.product_detail, name='product_detail'),
     
     path('cart/', views.get_user_cart, name='get_cart'),

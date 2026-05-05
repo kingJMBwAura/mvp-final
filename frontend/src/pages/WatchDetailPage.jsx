@@ -86,8 +86,8 @@ export default function WatchDetailPage() {
       <div className="watch-detail__container">
         <aside className="watch-detail__media kronos-card">
           <div className="watch-detail__image-wrapper">
-            {watch.image_url ? (
-              <img src={watch.image_url} alt={`${watch.brand} ${watch.watch_name}`} />
+            {watch.image_url || watch.market_external_image ? (
+              <img src={watch.image_url || watch.market_external_image} alt={`${watch.brand} ${watch.watch_name}`} />
             ) : (
               <div className="image-placeholder">No Image Available</div>
             )}

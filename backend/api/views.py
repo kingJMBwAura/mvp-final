@@ -80,6 +80,43 @@ def parse_money(value, default='0.00'):
     except Exception:
         return Decimal(default)
 
+
+def parse_optional_int(value):
+    if value in (None, ''):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def parse_bool(value):
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def normalize_external_image_url(value):
+    if not value:
+        return None
+
+    value = str(value).strip()
+    if value.startswith(('http://', 'https://')):
+        return value
+    return None
+
+
+def get_watch_image_url(watch, request=None):
+    if watch.image and request:
+        return request.build_absolute_uri(watch.image.url)
+
+    market = getattr(watch, 'market_data', None)
+    if market:
+        return normalize_external_image_url(market.external_image)
+
+    return None
+
+
 def watch_to_dict(watch, request=None):
     market = getattr(watch, 'market_data', None)
     return {
@@ -92,7 +129,7 @@ def watch_to_dict(watch, request=None):
         "currency": watch.currency,
         "seller_name": watch.seller.user_name if watch.seller else None,
         "description": watch.description,
-        "image_url": request.build_absolute_uri(watch.image.url) if watch.image and request else None,
+        "image_url": get_watch_image_url(watch, request),
         "availability": watch.availability,
         "movement": watch.movement,
         "case_material": watch.case_material,
@@ -109,7 +146,7 @@ def watch_to_dict(watch, request=None):
         "market_year_produced": market.year_produced if market else None,
         "market_function": market.function_name if market else None,
         "market_limited": market.limited if market else None,
-        "market_external_image": market.external_image if market else None,
+        "market_external_image": normalize_external_image_url(market.external_image) if market else None,
     }
 
 @api_view(['GET'])
@@ -167,6 +204,66 @@ def product_detail(request, watch_id):
         return Response(watch_to_dict(watch, request))
     except Watch.DoesNotExist:
         return Response({'detail': 'Watch not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['POST'])
+def create_watch_listing(request):
+    data = request.data
+    required_fields = ['brand', 'watch_name', 'condition', 'sale_price', 'location']
+    missing_fields = [
+        field for field in required_fields
+        if not str(data.get(field, '')).strip()
+    ]
+
+    if missing_fields:
+        return Response({
+            'error': 'Missing required fields.',
+            'fields': missing_fields,
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    seller_id = data.get('seller_id') or data.get('seller') or data.get('user_id')
+    seller = None
+    if seller_id:
+        seller = Account.objects.filter(pk=seller_id).first()
+    if seller is None:
+        seller = Account.objects.order_by('pk').first()
+    if seller is None:
+        return Response({
+            'error': 'A seller account is required before listing a watch.',
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    sale_price = parse_money(data.get('sale_price'))
+    if sale_price <= 0:
+        return Response({
+            'error': 'Sale price must be greater than zero.',
+        }, status=status.HTTP_400_BAD_REQUEST)
+
+    watch = Watch.objects.create(
+        brand=str(data.get('brand', '')).strip(),
+        watch_name=str(data.get('watch_name', '')).strip(),
+        reference_number=str(data.get('reference_number', '')).strip() or None,
+        condition=str(data.get('condition', '')).strip(),
+        sale_price=sale_price,
+        seller=seller,
+        movement=str(data.get('movement', '')).strip() or None,
+        case_material=str(data.get('case_material', '')).strip() or None,
+        bracelet_material=str(data.get('bracelet_material', '')).strip() or None,
+        year_of_production=parse_optional_int(data.get('year_of_production')),
+        gender=str(data.get('gender', '')).strip() or None,
+        location=str(data.get('location', '')).strip(),
+        availability=AVAILABLE_STATUS,
+        stock_quantity=parse_optional_int(data.get('stock_quantity')) or 1,
+        currency=str(data.get('currency', 'PHP')).strip() or 'PHP',
+        negotiable=parse_bool(data.get('negotiable', False)),
+        description=str(data.get('description', '')).strip() or None,
+        image=request.FILES.get('image') if request.FILES else None,
+    )
+
+    watch = Watch.objects.select_related('seller').filter(pk=watch.pk).first()
+    return Response({
+        'status': 'success',
+        'watch': watch_to_dict(watch, request),
+    }, status=status.HTTP_201_CREATED)
 
 # --- PROMO CODE VIEWS ---
 

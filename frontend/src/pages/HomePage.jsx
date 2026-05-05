@@ -11,18 +11,19 @@ export default function HomePage() {
   const [patekOfTheDay, setPatekOfTheDay] = useState(null);
 
   useEffect(() => {
-    apiRequest('landing/')
-      .then(data => {
+    apiRequest("landing/")
+      .then((data) => {
         setFeatured(data.featured_watches);
         setStats(data.stats);
 
         // Pick a Patek from featured watches, or just the first available
-        const patek = data.featured_watches.find(w =>
-          w.brand?.toLowerCase().includes("patek")
-        ) || data.featured_watches[0] || null;
+        const patek =
+          data.featured_watches.find((w) => w.brand?.toLowerCase().includes("patek")) ||
+          data.featured_watches[0] ||
+          null;
         setPatekOfTheDay(patek);
       })
-      .catch(err => console.error("Error fetching landing data:", err));
+      .catch((err) => console.error("Error fetching landing data:", err));
   }, []);
 
   return (
@@ -30,23 +31,18 @@ export default function HomePage() {
       <section className="home-hero">
         <div className="home-hero__overlay">
           <div className="home-hero__cta">
-            <div className="stats-banner">
-              Currently hosting {stats.total_watches} luxury timepieces.
-            </div>
+            <div className="stats-banner">Currently hosting {stats.total_watches} luxury timepieces.</div>
             <Link to="/shopnow" className="kronos-pill-outline home-hero__cta-link">
-              Buy a Patek
+              Buy a Watch
             </Link>
             <Link to="/sell" className="kronos-pill-outline home-hero__cta-link">
-              Sell a Patek
+              List a Watch
             </Link>
           </div>
         </div>
 
-        <div
-          className="home-hero__bg"
-          style={{ backgroundImage: `url(${heroWatch})` }}
-        >
-          <div className="home-hero__header" style={{ position: 'relative', zIndex: 999999 }}>
+        <div className="home-hero__bg" style={{ backgroundImage: `url(${heroWatch})` }}>
+          <div className="home-hero__header" style={{ position: "relative", zIndex: 999999 }}>
             <KronosHeader overlay />
           </div>
           <div className="home-hero__content">
@@ -83,7 +79,8 @@ export default function HomePage() {
               <p className="potd__ref">Ref. {patekOfTheDay.reference_number}</p>
               <p className="potd__description">{patekOfTheDay.description}</p>
               <div className="potd__price">
-                {patekOfTheDay.currency || "₱"}{Number(patekOfTheDay.sale_price).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                {patekOfTheDay.currency || "₱"}
+                {Number(patekOfTheDay.sale_price).toLocaleString("en-US", { minimumFractionDigits: 2 })}
               </div>
               <Link to={`/watches/${patekOfTheDay.id}`} className="kronos-pill">
                 View Listing →

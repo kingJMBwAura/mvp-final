@@ -4,14 +4,12 @@ import aboutWatch from "../assets/images/about-watch.jpg";
 
 export default function About() {
   return (
-    <>
+    <div className="page-shell about-page">
       <KronosHeader />
 
       <section className="about-section">
-        <div
-          className="about-section__left"
-          style={{ backgroundImage: `url(${aboutWatch})` }}
-        >
+        <div className="about-section__left">
+          <img src={aboutWatch} alt="Luxury watch detail" />
           <div className="about-section__overlay">
             <h2 className="about-section__title section-heading-serif">About Us</h2>
             <p className="about-section__subtitle">
@@ -53,6 +51,6 @@ export default function About() {
           </div>
         </div>
       </section>
-    </>
+    </div>
   );
 }

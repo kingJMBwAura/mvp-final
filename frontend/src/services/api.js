@@ -21,6 +21,23 @@ export async function getWatchById(id) {
   return response.json();
 }
 
+export async function createWatchListing(payload) {
+  const isFormData = payload instanceof FormData;
+  const response = await fetch(`${API_BASE}watches/create/`, {
+    method: "POST",
+    headers: isFormData ? undefined : { "Content-Type": "application/json" },
+    body: isFormData ? payload : JSON.stringify(payload),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    const error = new Error(data.error || "Failed to create watch listing");
+    error.responseData = data;
+    throw error;
+  }
+  return data;
+}
+
 export async function getCart() {
     const response = await fetch(`${API_BASE}cart/`);
     if (!response.ok) throw new Error("Cart fetch failed");

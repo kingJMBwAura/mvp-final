@@ -1,6 +1,11 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import KronosHeader from "../components/KronosHeader";
+import { createWatchListing } from "../services/api";
+import heroWatch from "../assets/images/hero-watch.jpg";
 import "../styles/SellPage.css";
+
+const conditionOptions = ["New", "Excellent", "Very Good", "Good", "Fair"];
+const requiredFields = ["brand", "watch_name", "condition", "sale_price", "location"];
 
 export default function SellPage() {
   const [formData, setFormData] = useState({
@@ -19,10 +24,28 @@ export default function SellPage() {
     negotiable: false,
     stock_quantity: 1,
     description: "",
+    image: null,
   });
 
   const [submitted, setSubmitted] = useState(false);
+  const [createdWatch, setCreatedWatch] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const [imagePreview, setImagePreview] = useState("");
   const [errors, setErrors] = useState({});
+
+  const completion = useMemo(() => {
+    const filled = requiredFields.filter((field) => formData[field]?.toString().trim()).length;
+    return Math.round((filled / requiredFields.length) * 100);
+  }, [formData]);
+
+  useEffect(() => {
+    return () => {
+      if (imagePreview) {
+        URL.revokeObjectURL(imagePreview);
+      }
+    };
+  }, [imagePreview]);
 
   function handleChange(e) {
     const { name, value, type, checked } = e.target;
@@ -31,18 +54,39 @@ export default function SellPage() {
       [name]: type === "checkbox" ? checked : value,
     }));
     if (errors[name]) {
-      setErrors((prev) => { const n = { ...prev }; delete n[name]; return n; });
+      setErrors((prev) => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
     }
   }
 
+  function handleImageChange(e) {
+    const file = e.target.files?.[0] || null;
+    setFormData((prev) => ({
+      ...prev,
+      image: file,
+    }));
+
+    if (imagePreview) {
+      URL.revokeObjectURL(imagePreview);
+    }
+    setImagePreview(file ? URL.createObjectURL(file) : "");
+  }
+
   function validate() {
-    const required = ["brand", "watch_name", "condition", "sale_price", "location"];
     const next = {};
-    required.forEach((f) => {
-      if (!formData[f] || formData[f].toString().trim() === "") {
-        next[f] = "This field is required.";
+    requiredFields.forEach((field) => {
+      if (!formData[field] || formData[field].toString().trim() === "") {
+        next[field] = "Required";
       }
     });
+
+    if (formData.sale_price && Number(formData.sale_price) <= 0) {
+      next.sale_price = "Enter a valid price";
+    }
+
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -51,26 +95,62 @@ export default function SellPage() {
     e.preventDefault();
     if (!validate()) return;
 
-    // TODO: wire to real API endpoint when seller auth is ready
-    console.log("Submitting listing:", formData);
-    setSubmitted(true);
+    setSubmitting(true);
+    setSubmitError("");
+    try {
+      const payload = new FormData();
+      Object.entries({
+        ...formData,
+        stock_quantity: Number(formData.stock_quantity) || 1,
+      }).forEach(([key, value]) => {
+        if (value !== null && value !== undefined && value !== "") {
+          payload.append(key, value);
+        }
+      });
+
+      const response = await createWatchListing(payload);
+      setCreatedWatch(response.watch);
+      setSubmitted(true);
+    } catch (error) {
+      console.error("Listing submission failed:", error.responseData || error);
+      setSubmitError(error.message || "Unable to submit listing right now.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   const getClass = (field) =>
-    errors[field] ? "kronos-input kronos-input--error" : "kronos-input";
+    errors[field] ? "sell-input sell-input--error" : "sell-input";
+
+  const formattedPrice = formData.sale_price
+    ? Number(formData.sale_price).toLocaleString("en-US")
+    : "Price";
 
   if (submitted) {
     return (
       <div className="page-shell sell-page">
         <KronosHeader />
-        <div className="sell-page__success">
-          <div className="sell-page__success-icon">✓</div>
-          <h2 className="section-heading-serif">Listing Submitted!</h2>
-          <p>Your watch has been submitted for review. It will appear on the marketplace once approved.</p>
-          <button className="kronos-pill" onClick={() => setSubmitted(false)}>
-            List Another Watch
-          </button>
-        </div>
+        <main className="sell-success">
+          <div className="sell-success__panel">
+            <div className="sell-success__icon">✓</div>
+            <p className="sell-eyebrow">Submitted for review</p>
+            <h1 className="section-heading-serif">Your listing is in good hands.</h1>
+            <p>
+              The Kronos team will review the details and prepare your watch for the marketplace.
+            </p>
+            {createdWatch?.id && (
+              <a className="sell-secondary-link" href={`/watches/${createdWatch.id}`}>
+                View Listing
+              </a>
+            )}
+            <button className="sell-primary-btn" onClick={() => {
+              setCreatedWatch(null);
+              setSubmitted(false);
+            }}>
+              List Another Watch
+            </button>
+          </div>
+        </main>
       </div>
     );
   }
@@ -79,160 +159,199 @@ export default function SellPage() {
     <div className="page-shell sell-page">
       <KronosHeader />
 
-      <div className="sell-page__hero">
-        <p className="sell-page__label">✦ Sell on Kronos</p>
-        <h1 className="section-heading-serif">List Your Timepiece</h1>
-        <p className="sell-page__sub">
-          Reach thousands of serious collectors. Fill in the details below to create your listing.
-        </p>
-      </div>
-
-      <div className="sell-page__layout">
-        {/* FORM */}
-        <form className="sell-page__form kronos-card" onSubmit={handleSubmit}>
-
-          <div className="sell-form__section">
-            <h2>Watch Details</h2>
-
-            <div className="sell-form__row sell-form__row--two">
-              <div className="sell-form__group">
-                <label>Brand *</label>
-                <input className={getClass("brand")} name="brand" placeholder="e.g. Patek Philippe" value={formData.brand} onChange={handleChange} />
-                {errors.brand && <span className="error-text">{errors.brand}</span>}
-              </div>
-              <div className="sell-form__group">
-                <label>Watch Name *</label>
-                <input className={getClass("watch_name")} name="watch_name" placeholder="e.g. Nautilus" value={formData.watch_name} onChange={handleChange} />
-                {errors.watch_name && <span className="error-text">{errors.watch_name}</span>}
-              </div>
-            </div>
-
-            <div className="sell-form__row sell-form__row--two">
-              <div className="sell-form__group">
-                <label>Reference Number</label>
-                <input className="kronos-input" name="reference_number" placeholder="e.g. 5711/1A" value={formData.reference_number} onChange={handleChange} />
-              </div>
-              <div className="sell-form__group">
-                <label>Year of Production</label>
-                <input className="kronos-input" name="year_of_production" placeholder="e.g. 2021" value={formData.year_of_production} onChange={handleChange} />
-              </div>
-            </div>
-
-            <div className="sell-form__row sell-form__row--two">
-              <div className="sell-form__group">
-                <label>Movement</label>
-                <input className="kronos-input" name="movement" placeholder="e.g. Automatic" value={formData.movement} onChange={handleChange} />
-              </div>
-              <div className="sell-form__group">
-                <label>Gender</label>
-                <select className="kronos-input" name="gender" value={formData.gender} onChange={handleChange}>
-                  <option value="">Select</option>
-                  <option value="Mens">Men's</option>
-                  <option value="Womens">Women's</option>
-                  <option value="Unisex">Unisex</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="sell-form__row sell-form__row--two">
-              <div className="sell-form__group">
-                <label>Case Material</label>
-                <input className="kronos-input" name="case_material" placeholder="e.g. Stainless Steel" value={formData.case_material} onChange={handleChange} />
-              </div>
-              <div className="sell-form__group">
-                <label>Bracelet Material</label>
-                <input className="kronos-input" name="bracelet_material" placeholder="e.g. Stainless Steel" value={formData.bracelet_material} onChange={handleChange} />
-              </div>
-            </div>
+      <main className="sell-page__content">
+        <section className="sell-intro" aria-labelledby="sell-title">
+          <div className="sell-intro__copy">
+            <p className="sell-eyebrow">Sell on Kronos</p>
+            <h1 id="sell-title" className="section-heading-serif">Create a trusted watch listing.</h1>
+            <p>
+              Add the essentials collectors look for first: model, condition, location, and a clear
+              asking price. The preview updates while you work.
+            </p>
           </div>
+        </section>
 
-          <div className="sell-form__section">
-            <h2>Listing Details</h2>
-
-            <div className="sell-form__row sell-form__row--two">
-              <div className="sell-form__group">
-                <label>Condition *</label>
-                <select className={getClass("condition")} name="condition" value={formData.condition} onChange={handleChange}>
-                  <option value="">Select Condition</option>
-                  <option value="New">New</option>
-                  <option value="Excellent">Excellent</option>
-                  <option value="Very Good">Very Good</option>
-                  <option value="Good">Good</option>
-                  <option value="Fair">Fair</option>
-                </select>
-                {errors.condition && <span className="error-text">{errors.condition}</span>}
+        <section className="sell-workspace">
+          <form className="sell-form" onSubmit={handleSubmit}>
+            <div className="sell-progress" aria-label="Listing completion">
+              <div>
+                <span>{completion}% complete</span>
+                <strong>{requiredFields.length - Math.round((completion / 100) * requiredFields.length)} essentials left</strong>
               </div>
-              <div className="sell-form__group">
-                <label>Location *</label>
-                <input className={getClass("location")} name="location" placeholder="e.g. Manila, Philippines" value={formData.location} onChange={handleChange} />
-                {errors.location && <span className="error-text">{errors.location}</span>}
+              <div className="sell-progress__track">
+                <span style={{ width: `${completion}%` }} />
               </div>
             </div>
 
-            <div className="sell-form__row sell-form__row--two">
-              <div className="sell-form__group">
-                <label>Sale Price *</label>
-                <input className={getClass("sale_price")} name="sale_price" type="number" placeholder="e.g. 250000" value={formData.sale_price} onChange={handleChange} />
-                {errors.sale_price && <span className="error-text">{errors.sale_price}</span>}
-              </div>
-              <div className="sell-form__group">
-                <label>Currency</label>
-                <select className="kronos-input" name="currency" value={formData.currency} onChange={handleChange}>
-                  <option value="PHP">PHP</option>
-                  <option value="USD">USD</option>
-                  <option value="EUR">EUR</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="sell-form__row sell-form__row--two">
-              <div className="sell-form__group">
-                <label>Stock Quantity</label>
-                <input className="kronos-input" name="stock_quantity" type="number" min="1" value={formData.stock_quantity} onChange={handleChange} />
-              </div>
-              <div className="sell-form__group sell-form__group--checkbox">
-                <label>
-                  <input type="checkbox" name="negotiable" checked={formData.negotiable} onChange={handleChange} />
-                  <span>Price is negotiable</span>
+            <fieldset className="sell-section">
+              <legend>Core Details</legend>
+              <div className="sell-grid sell-grid--two">
+                <label className="sell-field">
+                  <span>Brand *</span>
+                  <input className={getClass("brand")} name="brand" placeholder="Patek Philippe" value={formData.brand} onChange={handleChange} />
+                  {errors.brand && <small>{errors.brand}</small>}
+                </label>
+                <label className="sell-field">
+                  <span>Watch Name *</span>
+                  <input className={getClass("watch_name")} name="watch_name" placeholder="Nautilus" value={formData.watch_name} onChange={handleChange} />
+                  {errors.watch_name && <small>{errors.watch_name}</small>}
+                </label>
+                <label className="sell-field">
+                  <span>Reference Number</span>
+                  <input className="sell-input" name="reference_number" placeholder="5711/1A" value={formData.reference_number} onChange={handleChange} />
+                </label>
+                <label className="sell-field">
+                  <span>Year</span>
+                  <input className="sell-input" name="year_of_production" type="number" min="1900" max="2026" placeholder="2021" value={formData.year_of_production} onChange={handleChange} />
                 </label>
               </div>
+            </fieldset>
+
+            <fieldset className="sell-section">
+              <legend>Condition & Specs</legend>
+              <div className="sell-grid sell-grid--three">
+                <label className="sell-field">
+                  <span>Condition *</span>
+                  <select className={getClass("condition")} name="condition" value={formData.condition} onChange={handleChange}>
+                    <option value="">Select condition</option>
+                    {conditionOptions.map((condition) => (
+                      <option key={condition} value={condition}>{condition}</option>
+                    ))}
+                  </select>
+                  {errors.condition && <small>{errors.condition}</small>}
+                </label>
+                <label className="sell-field">
+                  <span>Movement</span>
+                  <input className="sell-input" name="movement" placeholder="Automatic" value={formData.movement} onChange={handleChange} />
+                </label>
+                <label className="sell-field">
+                  <span>Gender</span>
+                  <select className="sell-input" name="gender" value={formData.gender} onChange={handleChange}>
+                    <option value="">Select</option>
+                    <option value="Mens">Men's</option>
+                    <option value="Womens">Women's</option>
+                    <option value="Unisex">Unisex</option>
+                  </select>
+                </label>
+                <label className="sell-field">
+                  <span>Case Material</span>
+                  <input className="sell-input" name="case_material" placeholder="Stainless steel" value={formData.case_material} onChange={handleChange} />
+                </label>
+                <label className="sell-field">
+                  <span>Bracelet Material</span>
+                  <input className="sell-input" name="bracelet_material" placeholder="Stainless steel" value={formData.bracelet_material} onChange={handleChange} />
+                </label>
+                <label className="sell-field">
+                  <span>Stock</span>
+                  <input className="sell-input" name="stock_quantity" type="number" min="1" value={formData.stock_quantity} onChange={handleChange} />
+                </label>
+              </div>
+            </fieldset>
+
+            <fieldset className="sell-section">
+              <legend>Pricing & Location</legend>
+              <div className="sell-grid sell-grid--price">
+                <label className="sell-field">
+                  <span>Sale Price *</span>
+                  <input className={getClass("sale_price")} name="sale_price" type="number" min="1" placeholder="250000" value={formData.sale_price} onChange={handleChange} />
+                  {errors.sale_price && <small>{errors.sale_price}</small>}
+                </label>
+                <label className="sell-field">
+                  <span>Currency</span>
+                  <select className="sell-input" name="currency" value={formData.currency} onChange={handleChange}>
+                    <option value="PHP">PHP</option>
+                    <option value="USD">USD</option>
+                    <option value="EUR">EUR</option>
+                  </select>
+                </label>
+                <label className="sell-field">
+                  <span>Location *</span>
+                  <input className={getClass("location")} name="location" placeholder="Manila, Philippines" value={formData.location} onChange={handleChange} />
+                  {errors.location && <small>{errors.location}</small>}
+                </label>
+              </div>
+
+              <label className="sell-toggle">
+                <input type="checkbox" name="negotiable" checked={formData.negotiable} onChange={handleChange} />
+                <span />
+                Open to offers
+              </label>
+            </fieldset>
+
+            <fieldset className="sell-section">
+              <legend>Listing Photo</legend>
+              <label className="sell-upload">
+                <input type="file" name="image" accept="image/*" onChange={handleImageChange} />
+                <span className="sell-upload__thumb">
+                  {imagePreview ? (
+                    <img src={imagePreview} alt="Selected watch preview" />
+                  ) : (
+                    "Add Photo"
+                  )}
+                </span>
+                <span className="sell-upload__copy">
+                  <strong>{formData.image ? formData.image.name : "Upload a watch photo"}</strong>
+                  <small>PNG, JPG, JPEG, AVIF, or WebP. This will appear in the shop listing.</small>
+                </span>
+              </label>
+            </fieldset>
+
+            <fieldset className="sell-section">
+              <legend>Listing Notes</legend>
+              <label className="sell-field">
+                <span>Description</span>
+                <textarea className="sell-input sell-textarea" name="description" placeholder="Mention box, papers, service history, visible wear, and anything a buyer should know." value={formData.description} onChange={handleChange} rows={5} />
+              </label>
+            </fieldset>
+
+            <div className="sell-form__actions">
+              <p>{submitError || "Listings go live in the shop after submission."}</p>
+              <button type="submit" className="sell-primary-btn" disabled={submitting}>
+                {submitting ? "Submitting..." : "Submit Listing"}
+              </button>
+            </div>
+          </form>
+
+          <aside className="sell-preview" aria-label="Listing preview">
+            <div className="sell-preview__panel">
+              <p className="sell-preview__label">Live Preview</p>
+              <div className="sell-preview__image">
+                <img src={imagePreview || heroWatch} alt="" />
+              </div>
+              <div className="sell-preview__body">
+                <div>
+                  <h2>{formData.brand || "Brand"} {formData.watch_name || "Model"}</h2>
+                  <p>{formData.reference_number || "Reference number"}</p>
+                </div>
+                <strong>{formData.currency} {formattedPrice}</strong>
+                <dl>
+                  <div>
+                    <dt>Condition</dt>
+                    <dd>{formData.condition || "Not set"}</dd>
+                  </div>
+                  <div>
+                    <dt>Location</dt>
+                    <dd>{formData.location || "Not set"}</dd>
+                  </div>
+                  <div>
+                    <dt>Terms</dt>
+                    <dd>{formData.negotiable ? "Open to offers" : "Fixed price"}</dd>
+                  </div>
+                </dl>
+              </div>
             </div>
 
-            <div className="sell-form__group">
-              <label>Description</label>
-              <textarea className="kronos-input sell-form__textarea" name="description" placeholder="Describe your watch — box, papers, service history, etc." value={formData.description} onChange={handleChange} rows={4} />
+            <div className="sell-checklist">
+              <h3>Before you submit</h3>
+              <ul>
+                <li>Use the exact reference when available.</li>
+                <li>Include box, papers, and service history.</li>
+                <li>Price in the currency buyers should pay.</li>
+              </ul>
             </div>
-          </div>
-
-          <button type="submit" className="kronos-pill sell-page__submit">
-            Submit Listing →
-          </button>
-        </form>
-
-        {/* SIDEBAR */}
-        <aside className="sell-page__sidebar">
-          <div className="sell-sidebar__card kronos-card">
-            <h3>Why sell on Kronos?</h3>
-            <ul className="sell-sidebar__list">
-              <li>✦ Access to verified luxury watch buyers</li>
-              <li>✦ Secure transactions guaranteed</li>
-              <li>✦ Real market price insights</li>
-              <li>✦ No hidden fees</li>
-            </ul>
-          </div>
-
-          <div className="sell-sidebar__card kronos-card">
-            <h3>How it works</h3>
-            <ol className="sell-sidebar__steps">
-              <li><span>1</span> Fill in your watch details</li>
-              <li><span>2</span> Submit for review</li>
-              <li><span>3</span> Get approved and go live</li>
-              <li><span>4</span> Buyer places order</li>
-              <li><span>5</span> You get paid</li>
-            </ol>
-          </div>
-        </aside>
-      </div>
+          </aside>
+        </section>
+      </main>
     </div>
   );
 }
