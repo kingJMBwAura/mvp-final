@@ -78,6 +78,22 @@ def record_promo_usage(promo, account):
     promo.save(update_fields=['uses_count', 'updated_at'])
 
 
+def clear_ordered_cart_items(watch_ids):
+    global CART_STORAGE
+    ordered_watch_ids = {int(watch_id) for watch_id in watch_ids}
+
+    def is_ordered_cart_item(item):
+        try:
+            return int(item.get('watch', {}).get('id')) in ordered_watch_ids
+        except (TypeError, ValueError):
+            return False
+
+    CART_STORAGE = [
+        item for item in CART_STORAGE
+        if not is_ordered_cart_item(item)
+    ]
+
+
 def decrement_watch_inventory(watch_ids):
     unique_watch_ids = list(dict.fromkeys(watch_ids))
     watches = list(Watch.objects.select_for_update().filter(watch_id__in=unique_watch_ids))
@@ -650,12 +666,25 @@ def checkout(request, user_id):
 
 @api_view(['GET'])
 def view_orders(request, user_id):
-    orders = Order.objects.filter(buyer_id=user_id)
+    if not request.user.is_authenticated:
+        return Response({'detail': 'Authentication is required.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+    account = get_or_create_account_for_user(request.user)
+    if account.pk != user_id:
+        return Response({'detail': 'You can only view your own orders.'}, status=status.HTTP_403_FORBIDDEN)
+
+    orders = Order.objects.filter(buyer_id=user_id).prefetch_related('watches').order_by('-created_at')
     order_list = [{
         'order_id': o.order_id,
-        'total_price': float(o.total_price),
+        'full_name': o.full_name,
+        'total_price': str(o.total_price),
+        'delivery_method': o.delivery_method,
         'payment_status': o.payment_status,
         'created_at': o.created_at,
+        'watches': [
+            watch_to_dict(watch, request)
+            for watch in o.watches.all()
+        ],
     } for o in orders]
     return Response({'status': 'success', 'orders': order_list})
 
@@ -710,6 +739,9 @@ def create_order(request):
                 order.watches.set(purchased_watches)
             if promo:
                 record_promo_usage(promo, buyer_account)
+
+        if watch_ids:
+            clear_ordered_cart_items(watch_ids)
 
         return Response({
             "order_id": order.pk,

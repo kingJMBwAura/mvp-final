@@ -9,6 +9,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
+from . import views
 from .models import Account, Cart, PromoCode, PromoCodeUsage, Watch, WatchMarketData
 
 
@@ -52,6 +53,8 @@ class PromoCodeApiTests(APITestCase):
         )
         self.cart = Cart.objects.create(buyer=self.account)
         self.cart.items.add(self.watch)
+        views.CART_STORAGE.clear()
+        self.addCleanup(lambda: views.CART_STORAGE.clear())
 
     def test_apply_percentage_promo_returns_discounted_total(self):
         PromoCode.objects.create(
@@ -148,6 +151,63 @@ class PromoCodeApiTests(APITestCase):
         self.watch.refresh_from_db()
         self.assertEqual(self.watch.stock_quantity, 1)
         self.assertEqual(self.watch.availability, 'Available')
+
+    def test_create_order_clears_ordered_items_from_frontend_cart(self):
+        views.CART_STORAGE.append({
+            'id': 1,
+            'watch': views.watch_to_dict(self.watch),
+        })
+
+        response = self.client.post('/api/orders/create/', {
+            'buyer': self.account.pk,
+            'full_name': 'Test Buyer',
+            'shipping_address_line_1': '123 Main',
+            'shipping_city': 'Manila',
+            'shipping_region': 'NCR',
+            'shipping_zip_code': '1000',
+            'shipping_cost': '100.00',
+            'delivery_method': 'Standard',
+            'payment_method': 'Credit Card',
+            'watches': [self.watch.pk],
+            'payment_status': 'pending',
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+        cart_response = self.client.get('/api/cart/')
+        self.assertEqual(cart_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(cart_response.data['items'], [])
+        self.assertEqual(cart_response.data['subtotal'], '0.00')
+
+    def test_view_orders_returns_checked_out_watches(self):
+        order_response = self.client.post('/api/orders/create/', {
+            'buyer': self.account.pk,
+            'full_name': 'Test Buyer',
+            'shipping_address_line_1': '123 Main',
+            'shipping_city': 'Manila',
+            'shipping_region': 'NCR',
+            'shipping_zip_code': '1000',
+            'shipping_cost': '100.00',
+            'delivery_method': 'Standard',
+            'payment_method': 'Credit Card',
+            'watches': [self.watch.pk],
+            'payment_status': 'pending',
+        }, format='json')
+
+        self.assertEqual(order_response.status_code, status.HTTP_201_CREATED)
+
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get(f'/api/orders/user/{self.account.pk}/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['orders']), 1)
+        self.assertEqual(response.data['orders'][0]['order_id'], order_response.data['order_id'])
+        self.assertEqual(response.data['orders'][0]['watches'][0]['id'], self.watch.pk)
+
+    def test_view_orders_requires_login(self):
+        response = self.client.get(f'/api/orders/user/{self.account.pk}/')
+
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_create_order_rejects_out_of_stock_watch(self):
         self.watch.stock_quantity = 0

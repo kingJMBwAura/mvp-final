@@ -2,10 +2,14 @@ import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router";
 import { createOrder, getCart } from "../services/api";
 import KronosHeader from "../components/KronosHeader";
+import { useAuth } from "../services/auth";
 import "../styles/CheckoutPage.css";
+
+const PROMO_STORAGE_KEY = "kronosPromoCode";
 
 export default function CheckoutPage() {
   const navigate = useNavigate();
+  const { user, loading: authLoading } = useAuth();
   
   const [cart, setCart] = useState(null);
   const [errors, setErrors] = useState({});
@@ -25,17 +29,26 @@ export default function CheckoutPage() {
   });
 
   useEffect(() => {
+    if (authLoading) return;
+
     async function loadCart() {
       try {
         const data = await getCart();
         setCart(data);
-        setAppliedPromo(JSON.parse(localStorage.getItem("kronosPromoCode") || "null"));
+        localStorage.removeItem(PROMO_STORAGE_KEY);
+        const savedPromo = JSON.parse(sessionStorage.getItem(PROMO_STORAGE_KEY) || "null");
+        if (savedPromo?.user_id === user?.id) {
+          setAppliedPromo(savedPromo);
+        } else {
+          sessionStorage.removeItem(PROMO_STORAGE_KEY);
+          setAppliedPromo(null);
+        }
       } catch (error) {
         console.error("Failed to load cart for checkout:", error);
       }
     }
     loadCart();
-  }, []);
+  }, [authLoading, user?.id]);
 
   function handleChange(e) {
     const { name, value } = e.target;
@@ -86,7 +99,7 @@ export default function CheckoutPage() {
 
     try {
       const payload = {
-        buyer: 1,
+        buyer: user?.id ?? 1,
         full_name: `${formData.first_name} ${formData.last_name}`.trim(),
         shipping_address_line_1: formData.address_line1,
         shipping_address_line_2: formData.address_line2 || "",
@@ -109,7 +122,8 @@ export default function CheckoutPage() {
       const finalOrderId = order.order_id || order.id;
 
       if (finalOrderId) {
-        localStorage.removeItem("kronosPromoCode");
+        sessionStorage.removeItem(PROMO_STORAGE_KEY);
+        localStorage.removeItem(PROMO_STORAGE_KEY);
         navigate(`/orders/${finalOrderId}`);
       } else {
         console.error("No ID returned from backend:", order);

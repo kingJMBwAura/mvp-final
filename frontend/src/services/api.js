@@ -158,6 +158,13 @@ export async function createOrder(payload) {
   return data;
 }
 
+export async function getOrders(userId = 1) {
+  const response = await fetch(`${API_BASE}orders/user/${userId}/`, {
+    credentials: "include",
+  });
+  return parseJsonResponse(response);
+}
+
 export async function getOrderById(id) {
   const response = await fetch(`${API_BASE}orders/${id}/`);
   return response.json();

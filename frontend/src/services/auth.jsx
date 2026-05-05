@@ -39,6 +39,8 @@ export function AuthProvider({ children }) {
 
   async function logout() {
     await logoutRequest();
+    sessionStorage.removeItem("kronosPromoCode");
+    localStorage.removeItem("kronosPromoCode");
     setUser(null);
   }
 

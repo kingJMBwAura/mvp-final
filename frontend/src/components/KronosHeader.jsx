@@ -62,6 +62,10 @@ export default function KronosHeader({ overlay = false }) {
           🛒
         </Link>
 
+        <Link to="/orders" type="button" className="kronos-icon-btn" aria-label="Orders">
+          📦
+        </Link>
+
         {user ? (
           <button type="button" className="kronos-auth-btn" onClick={handleLogout}>
             Log Out

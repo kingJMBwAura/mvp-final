@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import KronosHeader from "../components/KronosHeader";
+import { useAuth } from "../services/auth";
 import { getCart, removeFromCart, applyPromoCode } from "../services/api";
 import "../styles/CartPage.css";
 
@@ -30,18 +31,24 @@ function computeTotals(items, shippingValue = "100.00", discountValue = 0) {
   };
 }
 
+const PROMO_STORAGE_KEY = "kronosPromoCode";
+
 export default function CartPage() {
+  const { user, loading: authLoading } = useAuth();
   const [cart, setCart] = useState(null);
   const [promoCode, setPromoCode] = useState("");
   const [promoMessage, setPromoMessage] = useState("");
   const [promoStatus, setPromoStatus] = useState("");
 
   useEffect(() => {
+    if (authLoading) return;
+
     async function loadCart() {
       try {
         const data = await getCart();
-        const savedPromo = JSON.parse(localStorage.getItem("kronosPromoCode") || "null");
-        if (savedPromo?.discount_amount) {
+        localStorage.removeItem(PROMO_STORAGE_KEY);
+        const savedPromo = JSON.parse(sessionStorage.getItem(PROMO_STORAGE_KEY) || "null");
+        if (savedPromo?.discount_amount && savedPromo.user_id === user?.id) {
           const totals = computeTotals(data.items || [], data.shipping || "100.00", savedPromo.discount_amount);
           setCart({
             ...data,
@@ -53,6 +60,7 @@ export default function CartPage() {
           setPromoStatus("success");
           setPromoMessage(`Promo code applied: ${savedPromo.code}`);
         } else {
+          sessionStorage.removeItem(PROMO_STORAGE_KEY);
           setCart(data);
         }
       } catch (error) {
@@ -60,7 +68,7 @@ export default function CartPage() {
       }
     }
     loadCart();
-  }, []);
+  }, [authLoading, user?.id]);
 
   async function handleApplyPromo(event) {
     event.preventDefault();
@@ -76,7 +84,7 @@ export default function CartPage() {
     try {
       const subtotalValue = cart?.subtotal?.toString().replace(/[^\d.]+/g, "") || "0";
       const data = await applyPromoCode(promoCode, {
-        account_id: 1,
+        account_id: user?.id,
         subtotal: subtotalValue,
       });
       const discountValue = parseFloat(data.discount_amount) || 0;
@@ -86,9 +94,10 @@ export default function CartPage() {
 
       setPromoStatus("success");
       setPromoMessage(`Promo code applied: ${data.code} — ${discountLabel}`);
-      localStorage.setItem("kronosPromoCode", JSON.stringify({
+      sessionStorage.setItem(PROMO_STORAGE_KEY, JSON.stringify({
         code: data.code,
         discount_amount: data.discount_amount,
+        user_id: user?.id,
       }));
 
       setCart((prevCart) => {
@@ -105,7 +114,8 @@ export default function CartPage() {
   async function handleRemove(cartItemId) {
     try {
       await removeFromCart(cartItemId);
-      localStorage.removeItem("kronosPromoCode");
+      sessionStorage.removeItem(PROMO_STORAGE_KEY);
+      localStorage.removeItem(PROMO_STORAGE_KEY);
       setPromoMessage("");
       setPromoStatus("");
       setCart((prevCart) => {

@@ -3,6 +3,7 @@ import HomePage from "./pages/HomePage";
 import WatchDetailPage from "./pages/WatchDetailPage";
 import CartPage from "./pages/CartPage";
 import CheckoutPage from "./pages/CheckoutPage";
+import OrdersPage from "./pages/OrdersPage";
 import OrderConfirmationPage from "./pages/OrderConfirmationPage";
 import ShopNow from "./pages/ShopNow";
 import About from "./pages/About";
@@ -20,6 +21,7 @@ export default function App() {
         <Route path="/watches/:id" element={<WatchDetailPage />} />
         <Route path="/cart" element={<CartPage />} />
         <Route path="/checkout" element={<CheckoutPage />} />
+        <Route path="/orders" element={<OrdersPage />} />
         <Route path="/orders/:id" element={<OrderConfirmationPage />} />
         <Route path="/shopnow" element={<ShopNow />} />
         <Route path="/about" element={<About />} />
