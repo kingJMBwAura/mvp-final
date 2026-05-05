@@ -101,9 +101,13 @@ textarea {
 }
 
 .kronos-search__icon {
+  border: none;
+  background: transparent;
   color: #333;
+  cursor: pointer;
   font-size: 15px;
   line-height: 1;
+  padding: 0;
 }
 
 .kronos-search input {

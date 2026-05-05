@@ -1,12 +1,33 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import Navbar from './Navbar'; 
 
 export default function KronosHeader({ overlay = false }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [searchTerm, setSearchTerm] = useState(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get("search") || "";
+  });
 
   const toggleMenu = () => {
     setIsMenuOpen(!isMenuOpen);
+  };
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    setSearchTerm(params.get("search") || "");
+  }, [location.search]);
+
+  const handleSearchSubmit = (event) => {
+    event.preventDefault();
+    const trimmedSearch = searchTerm.trim();
+    const nextPath = trimmedSearch
+      ? `/shopnow?search=${encodeURIComponent(trimmedSearch)}`
+      : "/shopnow";
+
+    navigate(nextPath);
   };
 
   return (
@@ -18,10 +39,17 @@ export default function KronosHeader({ overlay = false }) {
 
       <div className="kronos-header__actions">
         
-        <div className="kronos-search">
-          <span className="kronos_search_icon"></span>
-          <input type="text" placeholder="Search" />
-        </div>
+        <form className="kronos-search" role="search" onSubmit={handleSearchSubmit}>
+          <button className="kronos-search__icon" type="submit" aria-label="Search">
+            🔍
+          </button>
+          <input
+            type="search"
+            placeholder="Search"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+          />
+        </form>
         
         <Link to="/cart" type="button" className="kronos-icon-btn" aria-label="Cart">
           🛒

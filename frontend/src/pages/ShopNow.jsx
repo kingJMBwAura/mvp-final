@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { addToCart, getWatches } from "../services/api";
 import KronosHeader from "../components/KronosHeader";
 import "../styles/ShopNow.css";
@@ -11,11 +11,13 @@ export default function ShopNowSection() {
 
   const [showSuccess, setShowSuccess] = useState(false);
   const [lastAddedWatch, setLastAddedWatch] = useState(null);
+  const [searchParams] = useSearchParams();
+  const searchTerm = searchParams.get("search")?.trim() || "";
 
 useEffect(() => {
     async function loadWatches() {
       try {
-        const data = await getWatches();
+        const data = await getWatches(searchTerm);
         const watchList = Array.isArray(data) ? data : (data.results || []);
         setWatches(watchList);
       } catch (error) {
@@ -23,7 +25,7 @@ useEffect(() => {
       }
     }
     loadWatches();
-  }, []);
+  }, [searchTerm]);
 
   async function handleAddToCart(watchId) {
     try {
@@ -66,7 +68,7 @@ return (
         <h2 className="shop-now__title section-heading-serif">Shop Now</h2>
 
         <div className="shop-now__grid">
-          {watches.map((watch) => {
+          {watches.length > 0 ? watches.map((watch) => {
             const id = watch.id ?? watch.watch_id;
             const brand = watch.brand ?? "";
             const model = watch.model ?? watch.watch_name ?? "";
@@ -96,7 +98,11 @@ return (
 </button>
             </div>
             );
-          })}
+          }) : (
+            <p className="shop-now__empty">
+              {searchTerm ? `No watches found for "${searchTerm}".` : "No watches available."}
+            </p>
+          )}
         </div>
       </section>
     </div>

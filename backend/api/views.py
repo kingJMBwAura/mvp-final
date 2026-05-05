@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from rest_framework.decorators import api_view
 from rest_framework.pagination import PageNumberPagination
 from django.utils import timezone
+from django.db.models import Q
 from .models import Watch, Account, Order, Cart, PromoCode, PromoCodeUsage
 
 CART_STORAGE = []
@@ -71,6 +72,20 @@ def landing_page(request):
 def all_watches(request):
     try:
         watches = Watch.objects.filter(availability=AVAILABLE_STATUS).select_related('seller')
+        search = request.query_params.get('search', '').strip()
+
+        if search:
+            watches = watches.filter(
+                Q(brand__icontains=search) |
+                Q(watch_name__icontains=search) |
+                Q(reference_number__icontains=search) |
+                Q(condition__icontains=search) |
+                Q(movement__icontains=search) |
+                Q(case_material__icontains=search) |
+                Q(bracelet_material__icontains=search) |
+                Q(location__icontains=search)
+            )
+
         return Response([watch_to_dict(w, request) for w in watches])
     except Exception as e:
         return Response({'status': 'error', 'message': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

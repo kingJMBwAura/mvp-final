@@ -5,8 +5,13 @@ export async function getHello() {
   return response.json();
 }
 
-export async function getWatches() {
-  const response = await fetch(`${API_BASE}watches/`);
+export async function getWatches(search = "") {
+  const params = new URLSearchParams();
+  const trimmedSearch = search.trim();
+  if (trimmedSearch) params.set("search", trimmedSearch);
+
+  const queryString = params.toString();
+  const response = await fetch(`${API_BASE}watches/${queryString ? `?${queryString}` : ""}`);
   if (!response.ok) throw new Error("Failed to fetch watches");
   return response.json();
 }
@@ -90,4 +95,3 @@ export const apiRequest = async (endpoint, method = 'GET', body = null) => {
     if (!response.ok) throw new Error('Network response was not ok');
     return response.json();
 };
-
