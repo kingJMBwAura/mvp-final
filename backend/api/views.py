@@ -209,9 +209,28 @@ def get_or_create_account_for_user(user):
 
     first_name = user.first_name or user.username
     last_name = user.last_name or ""
+    email = (user.email or f"{user.username}@kronos.local").strip().lower()
+
+    account = Account.objects.filter(email__iexact=email).first()
+    if account:
+        account.user = user
+        account.email = email
+        account.first_name = account.first_name or first_name
+        account.last_name = account.last_name or last_name
+        account.user_name = account.user_name or user.username
+        account.save(update_fields=[
+            "user",
+            "email",
+            "first_name",
+            "last_name",
+            "user_name",
+            "updated_at",
+        ])
+        return account
+
     return Account.objects.create(
         user=user,
-        email=user.email or f"{user.username}@kronos.local",
+        email=email,
         first_name=first_name,
         last_name=last_name,
         user_name=user.username,
